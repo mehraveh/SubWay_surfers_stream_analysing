@@ -136,8 +136,8 @@ def run(
 
     coin = 0
     score = 0
-    max = 0
-    min = 100000
+    max1 = 0
+    min1 = 100000
     detected_count = 0
     last_line = 'CENTER'
     line_changes_count = 0
@@ -403,61 +403,55 @@ def run(
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-                # Write results
-                #file.write('****************************\n')
+                confs = []
                 for *xyxy, conf, cls in reversed(det):
-                    #print(len(reversed(det)))
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy, device=device).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                        with open(f'{txt_path}.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
-                    if save_img or save_crop or view_img and detect_num <=1 :  
-                        c = int(cls)  # integer class
-                        if c > 5 or conf < 0.7:
-                            continue 
- 
-                       #print( 'rect xyxy = ' , (xyxy[0].item(), xyxy[1].item(), xyxy[2].item(),xyxy[3].item()))                
-                        #print('loc =' , (xyxy[0].item()+xyxy[2].item())/2)
-                        #h =  (xyxy[1].item()+xyxy[3].item())/2
-                        #print(conf.item())
-                        
+                    confs.append(conf.item())
+                print(max(confs))
+                conf = max(confs)
+                if save_txt:  # Write to file
+                    xywh = (xyxy2xywh(torch.tensor(xyxy, device=device).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
+                    with open(f'{txt_path}.txt', 'a') as f:
+                        f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                if save_img or save_crop or view_img and detect_num <=1 :  
+                    c = int(cls)  # integer class
+                    if c > 5 or conf < 0.7:
+                        continue 
 
 
-                        if (xyxy[1].item()+xyxy[3].item())/2 < 850 and not jumped:
-                            #print('JUMP')
-                            jumped = True
-                            jump_count +=1
-                        elif (xyxy[1].item()+xyxy[3].item())/2 >= 850:
-                            jumped = False
+                    if (xyxy[1].item()+xyxy[3].item())/2 < 850 and not jumped:
+                        #print('JUMP')
+                        jumped = True
+                        jump_count +=1
+                    elif (xyxy[1].item()+xyxy[3].item())/2 >= 850:
+                        jumped = False
 
-                        if (xyxy[0].item()+xyxy[2].item())/2 < min:
-                            min = (xyxy[0].item()+xyxy[2].item())/2
-                        elif (xyxy[0].item()+xyxy[2].item())/2 > max:
-                            max = (xyxy[0].item()+xyxy[2].item())/2
-                        if (xyxy[0].item()+xyxy[2].item())/2 < 600 and (xyxy[1].item()+xyxy[3].item())/2 >850:
-                            #print('LEFT')
-                            if last_line != 'LEFT' and last_line != 'RIGHT':
-                                last_line = 'LEFT'
-                                line_changes_count +=1
-                        elif (xyxy[0].item()+xyxy[2].item())/2 >= 700 and (xyxy[0].item()+xyxy[2].item())/2 <= 800 and (xyxy[1].item()+xyxy[3].item())/2 >850:
-                            #print('CENTER')
-                            if last_line != 'CENTER':
-                                last_line = 'CENTER'
-                                line_changes_count +=1 
-                        elif (xyxy[0].item()+xyxy[2].item())/2 > 900 and (xyxy[1].item()+xyxy[3].item())/2 >850:
-                            #print('RIGHT')
-                            if last_line != 'RIGHT' and last_line != 'LEFT':
-                                last_line = 'RIGHT'
-                                line_changes_count +=1
-                        label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
-                        annotator.box_label(xyxy, label + ' w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' h = ' + str((xyxy[1].item()+xyxy[3].item())/2) + ' '+  last_line, color=colors(c, True))
-                        detected_count += 1
-                        #file.write(str(c)+ '\n')
-                        #file.write(str(xyxy[0].item()) + ', '+ str(xyxy[1].item()) + ', ' + str(xyxy[2].item()) + ', ' + str(xyxy[3].item()) + '\n')
-                        detect_num +=1
-                    if save_crop:
-                        save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
+                    if (xyxy[0].item()+xyxy[2].item())/2 < min1:
+                        min1 = (xyxy[0].item()+xyxy[2].item())/2
+                    elif (xyxy[0].item()+xyxy[2].item())/2 > max1:
+                        max1 = (xyxy[0].item()+xyxy[2].item())/2
+                    if (xyxy[0].item()+xyxy[2].item())/2 < 600 and (xyxy[1].item()+xyxy[3].item())/2 >850:
+                        #print('LEFT')
+                        if last_line != 'LEFT' and last_line != 'RIGHT':
+                            last_line = 'LEFT'
+                            line_changes_count +=1
+                    elif (xyxy[0].item()+xyxy[2].item())/2 >= 700 and (xyxy[0].item()+xyxy[2].item())/2 <= 800 and (xyxy[1].item()+xyxy[3].item())/2 >850:
+                        #print('CENTER')
+                        if last_line != 'CENTER':
+                            last_line = 'CENTER'
+                            line_changes_count +=1 
+                    elif (xyxy[0].item()+xyxy[2].item())/2 > 900 and (xyxy[1].item()+xyxy[3].item())/2 >850:
+                        #print('RIGHT')
+                        if last_line != 'RIGHT' and last_line != 'LEFT':
+                            last_line = 'RIGHT'
+                            line_changes_count +=1
+                    label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
+                    annotator.box_label(xyxy, label + ' w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' h = ' + str((xyxy[1].item()+xyxy[3].item())/2) + ' '+  last_line, color=colors(c, True))
+                    detected_count += 1
+                    print(  label +  ' w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' h = ' + str((xyxy[1].item()+xyxy[3].item())/2) )
+                    detect_num +=1
+                if save_crop:
+                    save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
                 
             if detect_num > 1:
                 continue 
@@ -493,7 +487,7 @@ def run(
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer[i].write(im0)
 
-        #LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
+        LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
 
     # Print results
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
