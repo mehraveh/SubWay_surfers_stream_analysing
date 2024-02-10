@@ -142,7 +142,12 @@ def run(
     last_line = 'CENTER'
     line_changes_count = 0
     jumped = False
+    is_power_jumper = False
+    power_jumper_count = 0
     jump_count = 0
+    frame_counter = 0
+    start_power_time = False
+
     device = torch.device("mps")
     print("Running on:", device)
 
@@ -190,6 +195,12 @@ def run(
 
         if not ret:
             break
+        
+        if start_power_time :
+            frame_counter +=1
+        if frame_counter  == 100:
+            start_power_time = False
+            frame_counter = 0
 
         #score = detect_n_digit_number(frame , (1160,30,1420,125))
         #if len(detect_n_digit_number(frame , (1220,150,1350,250)))>0:
@@ -252,7 +263,6 @@ def run(
                 cv2.rectangle(frame3, top_left, bottom_right, (255, 0, 225), 10)
                 sneakers+=1
                 #print('match_snk1')
-                print(max_val_sneaker)
             
             #magnet##############################
             if max_val_mag > 0.5 :
@@ -313,7 +323,6 @@ def run(
                 cv2.rectangle(frame4, top_left, bottom_right, (255, 0, 225), 10)
                 sneakers+=1
                 #print('match_snk2')
-                print(max_val_sneaker2)
 
 
             #magnet##############################
@@ -358,7 +367,7 @@ def run(
         
         if max_val2 <= 0.79:
             is_match2 = False
-
+        
         
         
         with dt[0]:
@@ -377,8 +386,6 @@ def run(
         with dt[2]:
             pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
-        # Second-stage classifier (optional)
-        # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
@@ -389,7 +396,7 @@ def run(
             else:
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
-            p = Path(p)  # to Path
+            p = Path(p)  
             save_path = str(save_dir / p.name)  # im.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
             s += '%gx%g ' % im.shape[2:]  # print string
@@ -403,70 +410,110 @@ def run(
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                confP = 0
                 confs = []
+                confPs = []
+                xys = []
+                xyPs = []
+                xyxy = None
+                xyxyP = None
+
                 for *xyxy, conf, cls in reversed(det):
-                    confs.append(conf.item())
-                print(max(confs))
-                conf = max(confs)
-                if save_txt:  # Write to file
-                    xywh = (xyxy2xywh(torch.tensor(xyxy, device=device).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                    with open(f'{txt_path}.txt', 'a') as f:
-                        f.write(('%g ' * len(line)).rstrip() % line + '\n')
-                if save_img or save_crop or view_img and detect_num <=1 :  
-                    c = int(cls)  # integer class
-                    if c > 5 or conf < 0.7:
-                        continue 
 
+                    if cls == 1 :
+                        confs.append(conf.item())
+                        xys.append(xyxy)
 
-                    if (xyxy[1].item()+xyxy[3].item())/2 < 850 and not jumped:
-                        #print('JUMP')
-                        jumped = True
-                        jump_count +=1
-                    elif (xyxy[1].item()+xyxy[3].item())/2 >= 850:
-                        jumped = False
+                    if cls == 3 :                   
+                        confPs.append(conf.item())
+                        xyPs.append(xyxy)
 
-                    if (xyxy[0].item()+xyxy[2].item())/2 < min1:
-                        min1 = (xyxy[0].item()+xyxy[2].item())/2
-                    elif (xyxy[0].item()+xyxy[2].item())/2 > max1:
-                        max1 = (xyxy[0].item()+xyxy[2].item())/2
-                    if (xyxy[0].item()+xyxy[2].item())/2 < 600 and (xyxy[1].item()+xyxy[3].item())/2 >850:
-                        #print('LEFT')
-                        if last_line != 'LEFT' and last_line != 'RIGHT':
-                            last_line = 'LEFT'
-                            line_changes_count +=1
-                    elif (xyxy[0].item()+xyxy[2].item())/2 >= 700 and (xyxy[0].item()+xyxy[2].item())/2 <= 800 and (xyxy[1].item()+xyxy[3].item())/2 >850:
-                        #print('CENTER')
-                        if last_line != 'CENTER':
-                            last_line = 'CENTER'
-                            line_changes_count +=1 
-                    elif (xyxy[0].item()+xyxy[2].item())/2 > 900 and (xyxy[1].item()+xyxy[3].item())/2 >850:
-                        #print('RIGHT')
-                        if last_line != 'RIGHT' and last_line != 'LEFT':
-                            last_line = 'RIGHT'
-                            line_changes_count +=1
-                    label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
-                    annotator.box_label(xyxy, label + ' w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' h = ' + str((xyxy[1].item()+xyxy[3].item())/2) + ' '+  last_line, color=colors(c, True))
-                    detected_count += 1
-                    print(  label +  ' w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' h = ' + str((xyxy[1].item()+xyxy[3].item())/2) )
-                    detect_num +=1
-                if save_crop:
-                    save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
+                if confs:
+                    conf = max(confs)
+                    idx = confs.index(max(confs))
+                    xyxy = xys[idx]
+
+                if confPs:
+                    confP = max(confPs)
+                    idxP = confPs.index(max(confPs))
+                    xyxyP = xyPs[idxP]
                 
-            if detect_num > 1:
-                continue 
+                hD = None
+                hP = None
+                wD = None
+                wP = None
+                for cls in [1 ,3] :
 
-            # Stream results
+                    if save_img or save_crop or view_img  :  
+                        c = int(cls)  # integer class
+                        if c == 1 and conf < 0.8 :
+                            continue 
+                        if c == 3 and confP < 0.6 :
+                            continue 
+
+                        if c == 1 :
+                            if (xyxy[1].item()+xyxy[3].item())/2 < 850 and not jumped:
+                                #print('JUMP')
+                                jumped = True
+                                if not start_power_time:
+                                    jump_count +=1
+                            elif (xyxy[1].item()+xyxy[3].item())/2 >= 850:
+                                jumped = False
+
+                            if (xyxy[0].item()+xyxy[2].item())/2 < min1:
+                                min1 = (xyxy[0].item()+xyxy[2].item())/2
+                            elif (xyxy[0].item()+xyxy[2].item())/2 > max1:
+                                max1 = (xyxy[0].item()+xyxy[2].item())/2
+                            if (xyxy[0].item()+xyxy[2].item())/2 < 560 :
+                                #print('LEFT')
+                                if last_line != 'LEFT' and last_line != 'RIGHT':
+                                    last_line = 'LEFT'
+                                    line_changes_count +=1
+                            elif (xyxy[0].item()+xyxy[2].item())/2 >= 700 and (xyxy[0].item()+xyxy[2].item())/2 <= 800 :
+                                #print('CENTER')
+                                if last_line != 'CENTER':
+                                    last_line = 'CENTER'
+                                    line_changes_count +=1 
+                            elif (xyxy[0].item()+xyxy[2].item())/2 > 820 :
+                                #print('RIGHT')
+                                if last_line != 'RIGHT' and last_line != 'LEFT':
+                                    last_line = 'RIGHT'
+                                    line_changes_count +=1
+                        if c == 1 :
+                            print('Dino =  ' + str(conf))
+                            label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
+                            annotator.box_label(xyxy ,label + ' ' + str(jump_count) + ' ' + str(line_changes_count) + '  w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' h = ' + str((xyxy[1].item()+xyxy[3].item())/2) + ' '+  last_line, color=colors(c, True))
+                            wD = (xyxy[0].item()+xyxy[2].item())/2
+                            hD = (xyxy[1].item()+xyxy[3].item())/2
+                        if c == 3 :
+                            print('Power Jumper =  ' + str(confP))
+                            label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {confP:.2f}')
+                            annotator.box_label(xyxyP , label  + '  w =  ' +  str((xyxyP[0].item()+xyxyP[2].item())/2) + ' h = ' + str((xyxyP[1].item()+xyxyP[3].item())/2) + ' '+  last_line, color=colors(c, True))
+                            wP = (xyxyP[0].item()+xyxyP[2].item())/2
+                            hP = (xyxyP[1].item()+xyxyP[3].item())/2
+                        detected_count += 1
+                        detect_num +=1
+                if hD and hP :
+                    print(' h Diff = ' + str(hD - hP))
+                    print(' w Diff = ' + str(wD - wP))
+                    if abs(hD - hP) < 400 and abs(wD - wP) < 100 and not is_power_jumper:
+                        print('POWER JUMPER')
+                        is_power_jumper = True
+                        start_power_time = True
+                        power_jumper_count += 1
+
+                else:
+                        is_power_jumper = False
+                print('-------------------------')
             im0 = annotator.result()
             if view_img:
                 if platform.system() == 'Linux' and p not in windows:
                     windows.append(p)
-                    cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
+                    cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  
                     cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
 
-            # Save results (image with detections)
             if save_img:
                 if dataset.mode == 'image':
                     cv2.imwrite(save_path, im0)
@@ -479,20 +526,18 @@ def run(
                             fps = vid_cap.get(cv2.CAP_PROP_FPS)
                             w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                             h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                            #print('W,H = ', w, h)
                         else:  # stream
                             fps, w, h = 30, im0.shape[1], im0.shape[0]
-                            #print('W,H = ', w, h)
                         save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer[i].write(im0)
 
-        LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
+        #LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
 
     # Print results
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
-    print('line changes = ' , line_changes_count, 'jump count = ', jump_count,'sneakers = ',sneakers,'magnets = ', magnets,'2xs = ', twoxs,'skates = ', sks, 'jets = ' , jets , 'score = ', score, 'coin =', coin)
+    print('line changes = ' , line_changes_count, 'jump count = ', jump_count, ' power jumpers = ' ,power_jumper_count,'sneakers = ',sneakers,'magnets = ', magnets,'2xs = ', twoxs,'skates = ', sks, 'jets = ' , jets , 'score = ', score, 'coin =', coin)
     if save_txt or save_img:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
         LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
