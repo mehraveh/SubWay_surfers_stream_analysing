@@ -6,3 +6,4 @@
 * Power-up chatching detection
 * Skateboard using detection
 * Number of collected coins detection
+* Box detection
