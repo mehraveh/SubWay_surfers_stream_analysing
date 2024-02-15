@@ -144,6 +144,8 @@ def run(
     jumped = False
     is_power_jumper = False
     power_jumper_count = 0
+    is_box = False
+    box_count = 0
     jump_count = 0
     frame_counter = 0
     start_power_time = False
@@ -369,22 +371,25 @@ def run(
             is_match2 = False
         
         
-        
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
             im /= 255  # 0 - 255 to 0.0 - 1.0
             if len(im.shape) == 3:
                 im = im[None]  # expand for batch dim
+            #print('0')
 
         # Inference
         with dt[1]:
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
             pred = model(im, augment=True, visualize=visualize)
+           # print('1')
+
 
         # NMS
         with dt[2]:
             pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+           # print('2')
 
 
         # Process predictions
@@ -392,6 +397,7 @@ def run(
             seen += 1
             if webcam:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
+                #frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
                 s += f'{i}: '
             else:
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
@@ -411,65 +417,99 @@ def run(
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
                 confP = 0
+                confDn = 0
+                confB = 0
                 confs = []
+                confDns = []
+                confBs = []
                 confPs = []
                 xys = []
                 xyPs = []
+                xyDns = []
+                xyBs = []
                 xyxy = None
                 xyxyP = None
+                xyxyDn = None
+                xyxyB = None
 
                 for *xyxy, conf, cls in reversed(det):
+
+                    if cls == 0 :
+                        confBs.append(conf.item())
+                        xyBs.append(xyxy)
 
                     if cls == 1 :
                         confs.append(conf.item())
                         xys.append(xyxy)
+                    
+                    if cls == 2 :
+                        confDns.append(conf.item())
+                        xyDns.append(xyxy)
 
                     if cls == 3 :                   
                         confPs.append(conf.item())
                         xyPs.append(xyxy)
-
+                
+                if confBs:
+                    confB = max(confBs)
+                    idx = confBs.index(max(confBs))
+                    xyxyB = xyBs[idx]
+                
                 if confs:
                     conf = max(confs)
                     idx = confs.index(max(confs))
                     xyxy = xys[idx]
 
+                if confDns:
+                    confDn = max(confDns)
+                    idx = confDns.index(max(confDns))
+                    xyxyDn = xyDns[idx]
+
                 if confPs:
                     confP = max(confPs)
-                    idxP = confPs.index(max(confPs))
-                    xyxyP = xyPs[idxP]
+                    idx = confPs.index(max(confPs))
+                    xyxyP = xyPs[idx]
                 
+                hB = None
                 hD = None
+                hDn = None
                 hP = None
+                wB = None
                 wD = None
+                wDn = None
                 wP = None
-                for cls in [1 ,3] :
+                for cls in [0, 1 ,2 ,3] :
 
                     if save_img or save_crop or view_img  :  
                         c = int(cls)  # integer class
+                        if c == 0 and confB < 0.6 :
+                            continue 
                         if c == 1 and conf < 0.8 :
+                            continue 
+                        if c == 2 and confDn < 0.6 :
                             continue 
                         if c == 3 and confP < 0.6 :
                             continue 
 
                         if c == 1 :
-                            if (xyxy[1].item()+xyxy[3].item())/2 < 850 and not jumped:
+                            if (xyxy[1].item()+xyxy[3].item())/2 < 800 and not jumped:
                                 #print('JUMP')
                                 jumped = True
                                 if not start_power_time:
                                     jump_count +=1
-                            elif (xyxy[1].item()+xyxy[3].item())/2 >= 850:
+                            elif (xyxy[1].item()+xyxy[3].item())/2 >= 800:
                                 jumped = False
 
                             if (xyxy[0].item()+xyxy[2].item())/2 < min1:
                                 min1 = (xyxy[0].item()+xyxy[2].item())/2
                             elif (xyxy[0].item()+xyxy[2].item())/2 > max1:
                                 max1 = (xyxy[0].item()+xyxy[2].item())/2
-                            if (xyxy[0].item()+xyxy[2].item())/2 < 560 :
+                            if (xyxy[0].item()+xyxy[2].item())/2 < 570 :
                                 #print('LEFT')
                                 if last_line != 'LEFT' and last_line != 'RIGHT':
                                     last_line = 'LEFT'
                                     line_changes_count +=1
-                            elif (xyxy[0].item()+xyxy[2].item())/2 >= 700 and (xyxy[0].item()+xyxy[2].item())/2 <= 800 :
+                            elif (xyxy[0].item()+xyxy[2].item())/2 >= 660 and (xyxy[0].item()+xyxy[2].item())/2 <= 800 :
                                 #print('CENTER')
                                 if last_line != 'CENTER':
                                     last_line = 'CENTER'
@@ -479,21 +519,33 @@ def run(
                                 if last_line != 'RIGHT' and last_line != 'LEFT':
                                     last_line = 'RIGHT'
                                     line_changes_count +=1
+                        if c == 0 :
+                            print('Box =  ' + str(confB))
+                            label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {confB:.2f}')
+                            annotator.box_label(xyxyB ,label  + str(conf) + ' ' + str(jump_count) + ' ' + str(line_changes_count) + '  w =  ' +  str((xyxyB[0].item()+xyxyB[2].item())/2) + ' ' +  last_line, color=colors(c, True))
+                            wB = (xyxyB[0].item()+xyxyB[2].item())/2
+                            hB = (xyxyB[1].item()+xyxyB[3].item())/2
                         if c == 1 :
                             print('Dino =  ' + str(conf))
                             label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
-                            annotator.box_label(xyxy ,label + ' ' + str(jump_count) + ' ' + str(line_changes_count) + '  w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' h = ' + str((xyxy[1].item()+xyxy[3].item())/2) + ' '+  last_line, color=colors(c, True))
+                            annotator.box_label(xyxy ,label  + str(conf) + ' ' + str(jump_count) + ' ' + str(line_changes_count) + '  w =  ' +  str((xyxy[0].item()+xyxy[2].item())/2) + ' ' +  last_line, color=colors(c, True))
                             wD = (xyxy[0].item()+xyxy[2].item())/2
                             hD = (xyxy[1].item()+xyxy[3].item())/2
+                        if c == 2 :
+                            print('Dinon =  ' + str(confDn))
+                            label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {confDn:.2f}')
+                            annotator.box_label(xyxyDn ,label  + str(confDn) + ' ' + str(jump_count) + ' ' + str(line_changes_count) + '  w =  ' +  str((xyxyDn[0].item()+xyxyDn[2].item())/2) + ' ' +  last_line, color=colors(c, True))
+                            wDn = (xyxyDn[0].item()+xyxyDn[2].item())/2
+                            hDn = (xyxyDn[1].item()+xyxyDn[3].item())/2
                         if c == 3 :
                             print('Power Jumper =  ' + str(confP))
                             label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {confP:.2f}')
-                            annotator.box_label(xyxyP , label  + '  w =  ' +  str((xyxyP[0].item()+xyxyP[2].item())/2) + ' h = ' + str((xyxyP[1].item()+xyxyP[3].item())/2) + ' '+  last_line, color=colors(c, True))
+                            annotator.box_label(xyxyP , label + str(confP)  + '  w =  ' +  str((xyxyP[0].item()+xyxyP[2].item())/2) +  ' ' +  last_line, color=colors(c, True))
                             wP = (xyxyP[0].item()+xyxyP[2].item())/2
                             hP = (xyxyP[1].item()+xyxyP[3].item())/2
                         detected_count += 1
                         detect_num +=1
-                if hD and hP :
+                if (hD and hP) :
                     print(' h Diff = ' + str(hD - hP))
                     print(' w Diff = ' + str(wD - wP))
                     if abs(hD - hP) < 400 and abs(wD - wP) < 100 and not is_power_jumper:
@@ -501,10 +553,37 @@ def run(
                         is_power_jumper = True
                         start_power_time = True
                         power_jumper_count += 1
-
+                elif (hDn and hP) :
+                    print(' h Diff = ' + str(hDn - hP))
+                    print(' w Diff = ' + str(wDn - wP))
+                    if abs(hDn - hP) < 400 and abs(wDn - wP) < 400 and not is_power_jumper:
+                        print('POWER JUMPER')
+                        is_power_jumper = True
+                        start_power_time = True
+                        power_jumper_count += 1
                 else:
                         is_power_jumper = False
-                print('-------------------------')
+
+                if (hD and hB) :
+                    print(' h Diff = ' + str(hD - hB))
+                    print(' w Diff = ' + str(wD - wB))
+                    if abs(hD - hB) < 400 and abs(wD - wB) < 100 and not is_box:
+                        print('BOX')
+                        is_box = True
+                        box_count += 1
+                elif (hDn and hB) :
+                    print(' h Diff = ' + str(hDn - hB))
+                    print(' w Diff = ' + str(wDn - wB))
+                    if abs(hDn - hB) < 400 and abs(wDn - wB) < 400 and not is_box:
+                        print('BOX')
+                        is_box = True
+                        box_count += 1
+                else:
+                    is_box = False
+                
+
+              #  print('-------------------------')
+            
             im0 = annotator.result()
             if view_img:
                 if platform.system() == 'Linux' and p not in windows:
@@ -531,13 +610,17 @@ def run(
                         save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer[i].write(im0)
+                
 
         #LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
 
     # Print results
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
-    print('line changes = ' , line_changes_count, 'jump count = ', jump_count, ' power jumpers = ' ,power_jumper_count,'sneakers = ',sneakers,'magnets = ', magnets,'2xs = ', twoxs,'skates = ', sks, 'jets = ' , jets , 'score = ', score, 'coin =', coin)
+    print('line changes = ' , line_changes_count, 'jump count = ', jump_count, 
+          ' power jumpers = ' ,power_jumper_count,'sneakers = ',sneakers,'magnets = ', magnets,'2xs = ', twoxs,
+          'skates = ', sks, 'jets = ' , jets , 'boxes = ' , box_count  , 
+          'score = ', score, 'coin =', coin)
     if save_txt or save_img:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
         LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")

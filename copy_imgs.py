@@ -1,7 +1,7 @@
 import os
 import shutil
 
-s_folder_path = "newversion"  # Replace with the path to your folder
+s_folder_path = "/Users/mehravehahmadi/newversion"  # Replace with the path to your folder
 d_folder_path = "/Users/mehravehahmadi/Dinon"  # Replace with the path to your folder
 
 # List all files in the folder
